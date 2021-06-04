@@ -1,0 +1,5 @@
+<launch>
+	<node pkg="fly_curve" type ="outer_control.py" name="fly_curve" output="screen"/>
+	<node pkg="fly_curve" type ="arm_offboard.py" name="arm_offboard" output="screen"/>
+
+</launch>

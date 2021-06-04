@@ -1,0 +1,9 @@
+<?xml version="1.0" ?>
+<sdf version="1.5">
+  <model name='iris_d435'>
+    <include>
+      <uri>model://iris_modified</uri>
+    </include>
+
+  </model>
+</sdf>
