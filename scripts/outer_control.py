@@ -228,7 +228,7 @@ if __name__ == '__main__':
     speed_range = [1.5,4,9]
     spd_angle_shrd = [math.pi/6,math.pi*5/6]
     accel_d = 0.1
-    decel_d = 0.4
+    decel_d = 0.3
     m_speed = 1 # start the flight from a lower speed
     slen=0.9
     rds = 3.5
