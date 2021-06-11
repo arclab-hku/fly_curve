@@ -14,6 +14,7 @@ import numpy as np
 import tf
 from get_control import Get_control
 import math
+import time
 class UAVController(object):
     def register(self):
         self.ros_data = {}
@@ -30,9 +31,9 @@ class UAVController(object):
         self.pos_setvel_pub = rospy.Publisher(
             'mavros/setpoint_velocity/cmd_vel', TwistStamped, queue_size=10)
         self.path_pub = rospy.Publisher('/uav_path', Path, queue_size=10)
-        self.stpath_pub = rospy.Publisher('/st_path', Path, queue_size=1)
-        self.cvpath_pub = rospy.Publisher('/cv_path', Path, queue_size=1)
-        self.predtrj_pub = rospy.Publisher('/pred_path', Path, queue_size=1)
+        self.stpath_pub = rospy.Publisher('/st_path', Path, queue_size=10)
+        self.cvpath_pub = rospy.Publisher('/cv_path', Path, queue_size=10)
+        self.predtrj_pub = rospy.Publisher('/pred_path', Path, queue_size=10)
         self.state_sub = rospy.Subscriber('mavros/state',
                                           State,
                                           self.state_callback)
@@ -243,12 +244,15 @@ if __name__ == '__main__':
     local_pos = controller.ros_data["local_position"]
     # set_points = np.array([local_pos,[20,20,4],[16,4,3],[-20,-18,2],[-18,6,3],[0,0,2]]) # the pre-assigned waypoints
     # set_points = np.array([local_pos,[50,0,4],[50,4,3],[0,4,2],[0,8,3],[50,8,2],[50,12,4],[0,12,4],[0,0,4]]) 
-    set_points = np.array([local_pos,[25,0,4],[50,0,4],[50,25,3],[0,25,2],[50,0,3],[50,50,2],[50,0,4],[0,0,4]])
+    # set_points = np.array([local_pos,[25,0,4],[50,0,4],[50,25,3],[0,25,2],[50,0,3],[50,50,2],[50,0,4],[0,0,4]])
+    # set_points = np.array([local_pos,[25,2,4],[50,0,4],[50,25,3],[-300,25,2],[50,0,3],[50,50,2],[50,0,4],[0,0,4]])
+    set_points = np.array([local_pos,[100,0,4],[100,1,4],[0,1,3],[0,2,2],[100,2,3],[100,3,2],[0,4,4],[0,0,4]])
+    speed_range = [1.5,6,15]
     # set_points = np.array([local_pos,[25,0,4],[50,0,4],[0,0,4]])
     # set_points[:,0:2] = set_points[:,0:2]*2
     mn_speed = 0.3 #not the constrain
     max_accel = 6
-    speed_range = [1.5,6,9]
+    # speed_range = [1.5,6,9]
     spd_angle_shrd = [math.pi/6,math.pi*9/10] #,math.pi*5/6
     accel_d = 0.1
     decel_d = 0.2
@@ -257,7 +261,7 @@ if __name__ == '__main__':
     rds = 3.5
     eta = 2
     pred_coe = 0.7
-    yaw_gnum = 7
+    yaw_gnum = 6
     decel_rad = 3
     ct_goal = 0
     path=[]
@@ -268,6 +272,8 @@ if __name__ == '__main__':
     y=0
     rais=0
     nst_tn_pt=0
+    opt_time = 0
+    low_t = 0
     set_points[0,2] = set_points[1,2] 
     waypoints_cv,turn_points,lc_max_speed = Get_control.get_curve(set_points,rds,slen,eta,speed_range,spd_angle_shrd)
     # print("turn_points,lc_max_speed",turn_points,lc_max_speed)
@@ -290,8 +296,8 @@ if __name__ == '__main__':
                 controller.set_local_position(set_points[0,0],set_points[0,1],set_points[0,2]+0.2)
                 local_pos = controller.ros_data["local_position"]
             rais+=1
-        
-        if np.linalg.norm(set_points[-1]-local_pos)<2 and nst_tn_pt>1:
+        t1 = time.time()
+        if np.linalg.norm(set_points[-1]-local_pos)<2 and nst_tn_pt>len(turn_points)-2:
             for ii in range(100):
                 controller.set_vel(0,0,0,0)
             for iii in range(100):
@@ -299,10 +305,10 @@ if __name__ == '__main__':
             print("goal reached !!")
         else:
             y = controller.eular[2]
-            vel,dyaw,yaw,pred_trj,ct_goal,time_pred,t2,m_speed,lt_ctrl,pos_wp,pos_wp2,nst_tn_pt,if_slow = Get_control.get_vel(set_points,
+            vel,dyaw,yaw,pred_trj,ct_goal,time_pred,t2,m_speed,lt_ctrl,pos_wp,pos_wp2,nst_tn_pt,if_slow,opt_time,low_t = Get_control.get_vel(set_points,
                                               local_pos,ct_goal,waypoints_cv,slen,t2,time_pred,uav_vel,mn_speed,
                                               lc_max_speed,speed_range,m_speed,max_accel,pred_coe,lt_ctrl,y,turn_points,
-                                              yaw_gnum,accel_d,decel_d,decel_rad,nst_tn_pt)
+                                              yaw_gnum,accel_d,decel_d,decel_rad,nst_tn_pt,opt_time,low_t)
             # vel = np.array([0.1,0.1,0.1])
             controller.set_vel(vel[0],vel[1],vel[2],dyaw)
             print('set_vel,ct_goal,waypoints_cv[ct_goal]',vel,ct_goal,waypoints_cv[np.clip(ct_goal,0,len(waypoints_cv)-1)])
@@ -310,6 +316,7 @@ if __name__ == '__main__':
         path.append(local_pos)
         if len(path)>200:
             del path[int(np.random.rand(1)*200)]
+        print("time cost:",time.time()-t1)
         controller.publish_path(path)
         controller.publish_stpath(set_points)
         # controller.publish_cvpath(waypoints_cv)
