@@ -261,7 +261,7 @@ if __name__ == '__main__':
     rds = 3.5
     eta = 2
     pred_coe = 0.7
-    yaw_gnum = 6
+    yaw_gnum = 5
     decel_rad = 3
     ct_goal = 0
     path=[]
