@@ -1,4 +1,7 @@
 #!/bin/bash
+echo 0000 | sudo -S pkill -9 gzserver
+echo 0000 | sudo -S pkill -9 gzclient
+sleep 1
 cd ~/PX4-Autopilot
 DONT_RUN=1 make px4_sitl_default gazebo
 source ~/catkin_ws/devel/setup.bash    # (optional)
