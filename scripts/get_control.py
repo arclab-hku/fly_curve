@@ -55,7 +55,7 @@ class Get_control:
         # else:
         #     pp_l3=0
             
-        if (pos_wp2!= pos_wp).any() and np.linalg.norm([vx,vy,vz])>1.5:
+        if (pos_wp2!= pos_wp).any():# and np.linalg.norm([vx,vy,vz])>1.5:
             pp_l2 = 0
             for i in range(3,7):
                 traj_end2 = ((np.array([vx,vy,vz])+x[0:3]/2*trj_dt*i/2)*2*trj_dt*i/2)
@@ -113,7 +113,7 @@ class Get_control:
                 nst_tn_pt+=1
         else:
             nst_tn_pt = np.argmin(np.linalg.norm(turn_points[0:2]-local_pos,axis=1))
-        # print("turn points:",len(turn_points),nst_tn_pt,turn_points[nst_tn_pt:nst_tn_pt+2])
+        print("turn points:",len(turn_points),nst_tn_pt,turn_points[nst_tn_pt:nst_tn_pt+2])
         # print('speed list lenth',len(lc_speed_list),lc_speed_list[nst_tn_pt])
         max_speed = lc_speed_list[min(nst_tn_pt,len(lc_speed_list)-1)]
         # print("nst_tn_pt,lc_speed_list",nst_tn_pt,lc_speed_list,turn_points)
@@ -126,7 +126,7 @@ class Get_control:
         print("deccel radius!",decel_rad,max_speed,m_speed,uav_speed)
         wpnxt = waypoints_cv[min(len(waypoints_cv)-1,ct_goal+1)]-local_pos
         if_turned = np.linalg.norm(uav_vel/uav_speed - wpnxt/np.linalg.norm(wpnxt))
-        if (time.time()-low_t<=2 or (np.linalg.norm(turn_points[nst_tn_pt:min(nst_tn_pt+3,len(turn_points)-1)]-local_pos,axis=1)<decel_rad).any()):
+        if (time.time()-low_t<=2 or (np.linalg.norm(turn_points[nst_tn_pt:min(nst_tn_pt+2,len(turn_points)-1)]-local_pos,axis=1)<decel_rad).any()):
             if m_speed>=max_speed:
                 m_speed = min(m_speed,uav_speed)-decel_d
                 print("slow down1!",max_speed,uav_speed)
@@ -137,8 +137,9 @@ class Get_control:
                 self.if_slow = 2
                 low_t = time.time()
             elif max_speed == speed_range[2] and (uav_speed < self.switch_vel or if_turned < 0.2): # and time.time()-low_t>2:
-                print("start to fly straight,speed up!")
-                m_speed = min(m_speed+accel_d,max_speed)
+                
+                m_speed = min(m_speed+accel_d,speed_range[2])
+                print("start to fly straight,speed up!",m_speed,uav_speed)
                 self.if_acc = 1
             else:
                 print("slow down3!",max_speed,uav_speed)
@@ -151,7 +152,7 @@ class Get_control:
         # if if_stt==0 and self.if_slow==0:
         #     m_speed = np.clip(m_speed,m_speed,uav_speed+0.5*decel_d)
         # else:
-        m_speed = np.clip(m_speed,0,uav_speed+2.5)
+        m_speed = np.clip(m_speed,0,uav_speed+2.0)
         # if abs(m_speed-uav_speed)>decel_d:
             
         #     m_speed = uav_speed + np.sign(m_speed-uav_speed)*decel_d
@@ -207,7 +208,11 @@ class Get_control:
 
         vx,vy,vz = uav_vel
         px,py,pz = local_pos
-        x0=(uav_speed)*(pos_wp/np.linalg.norm(pos_wp))
+        # x0=(uav_speed)*(pos_wp/np.linalg.norm(pos_wp))
+        if lt_ctrl is None:
+            x0=np.array([0,0,0])
+        else:
+            x0=lt_ctrl
         pred_trj = []
         if uav_speed < self.switch_vel or (m_speed<self.set_vel and self.if_slow==3):
             vel = pos_wp2/np.linalg.norm(pos_wp2) *self.set_vel
@@ -220,9 +225,9 @@ class Get_control:
             print("start,the velocity to goal!")
         else:
             t_b = time.time()
-            bons = ((-max_accel,max_accel), (-max_accel, max_accel), (-0.5*max_accel, max_accel))
+            bons = ((-max_accel,max_accel), (-max_accel, max_accel), (-0.5*max_accel, 0.5*max_accel))
          
-            trj_dt = np.linalg.norm(pos_wp)/(max(0,uav_speed*1.4))
+            trj_dt = np.linalg.norm(pos_wp)/(max(0,uav_speed*1.1))
             # trj_dt = np.linalg.norm(pos_wp)/m_speed
             cons = (#{'type': 'ineq', 'fun': lambda x: np.linalg.norm([vx+x[0]*trj_dt,vy+x[1]*trj_dt,vz+x[2]*trj_dt])+mn_speed},
                     {'type': 'ineq', 'fun': lambda x: -np.linalg.norm([vx+x[0]*trj_dt,vy+x[1]*trj_dt,vz+x[2]*trj_dt])+m_speed,
@@ -230,6 +235,9 @@ class Get_control:
                   )
             res = minimize(self.fun, x0, args=(trj_dt,px,py,pz,vx,vy,vz,pos_wp,lt_ctrl,pos_wp2),method='SLSQP',\
                         options={'maxiter':10},constraints=cons,bounds = bons, tol = 1e-2)
+            if type(res.x[0]) !=np.float64:
+                print("opti fail!",res.x)
+                res.x = np.clip((m_speed*pos_wp/slen-uav_vel)/trj_dt,-max_accel, max_accel)
             traj_end = ((np.array([vx,vy,vz])+res.x[0:3]*trj_dt/2)*trj_dt)
             pp_1 = traj_end -pos_wp
             pp_2 = traj_end
@@ -262,16 +270,18 @@ class Get_control:
             # if res.x[2]<0:
             #     res.x *= 0.1
             if self.if_acc:
-                # acc_mag = np.linalg.norm(res.x*trj_dt)
-                # acc_uni = res.x*trj_dt/acc_mag
-                # acc_mag = max(1,np.linalg.norm(res.x*trj_dt))
-                # print("acc_mag",acc_mag,trj_dt)
-                # vel=uav_vel+acc_uni*acc_mag
+                acc_mag = np.linalg.norm(res.x*trj_dt)
+                acc_uni = res.x*trj_dt/acc_mag
+                acc_mag = max(0.5,acc_mag)
+                print("acc_mag",acc_mag,trj_dt)
+                vel=uav_vel+acc_uni*acc_mag
                 # if max(abs(uav_vel))>10:
                 #     res.x[np.argmax(abs(uav_vel))] *= 1.2
                 #     # res.x[2] *= 0.5
-                print("traj_dt",trj_dt,res.x*trj_dt,"if_acc,if_slow",self.if_acc,self.if_slow)
-                vel=uav_vel+res.x*trj_dt
+               
+                # trj_dt = np.clip(trj_dt,0.3,3.0)
+                # print("traj_dt",trj_dt,res.x*trj_dt,"if_acc,if_slow",self.if_acc,self.if_slow)
+                # vel=uav_vel+res.x*trj_dt
             else:
                 vel=uav_vel+res.x*trj_dt*pred_coe
             if (self.if_acc==1 and np.linalg.norm(vel) < self.set_vel) or self.if_slow==3: # or (m_speed<self.set_vel and self.if_slow==2)\

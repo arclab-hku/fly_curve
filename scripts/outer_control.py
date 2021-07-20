@@ -10,6 +10,7 @@ from nav_msgs.msg import Path
 from mavros_msgs.msg import State
 from geometry_msgs.msg import TwistStamped
 from visualization_msgs.msg import Marker,MarkerArray
+from geometry_msgs.msg import Vector3Stamped
 import numpy as np
 import tf
 from get_control import Get_control
@@ -43,6 +44,23 @@ class UAVController(object):
         self.locwp_publisher = rospy.Publisher("local_wp", MarkerArray, queue_size=1)
         self.bp_publisher = rospy.Publisher("bezier_points", MarkerArray, queue_size=1)
         self.vel_sub=rospy.Subscriber('mavros/local_position/velocity_local',TwistStamped,self.vel_callback)
+        self.pos_setacc_pub = rospy.Publisher(
+            'mavros/setpoint_accel/accel', Vector3Stamped, queue_size=10) #set acceleration command
+        
+    def set_accel(self,accel):
+        acc = Vector3Stamped()
+        acc.header = Header()
+        acc.header.frame_id = "map"
+        acc.header.stamp = rospy.Time.now()
+        acc.vector.x = accel[0]
+        acc.vector.y = accel[1]
+        acc.vector.z = accel[2]
+        # acc.accel.angular.x = 0
+        # acc.accel.angular.y = 0
+        # acc.accel.angular.z = 0
+        # rospy.Publisher(
+        #     'mavros/setpoint_accel/send_force', True, queue_size=10)
+        self.pos_setacc_pub.publish(acc)
     
     def vel_callback(self,vel):
         self.vel = np.array([vel.twist.linear.x,vel.twist.linear.y,vel.twist.linear.z])
@@ -50,7 +68,7 @@ class UAVController(object):
         bpts = MarkerArray()
         len_pts = len(pts)
         pts = np.r_[np.array(pts),np.array(t_points),np.array([t_points[min(p_index,len(t_points)-1)]])]
-        for j in range(len_pts,len(pts)):
+        for j in range(0,len(pts)): #len_pts
             point=pts[j]
             bp = Marker()
             bp.header.frame_id = "map"
@@ -251,16 +269,16 @@ if __name__ == '__main__':
     # set_points = np.array([local_pos,[25,2,4],[50,0,4],[50,25,3],[-100,25,2],[50,0,3],[50,50,2],[50,0,4],[0,0,4]])
     # set_points = np.array([local_pos,[100,0,4],[100,1,4],[100,1,4],[0,2,3],[0,2,2],[100,2,3],[100,2,2],[0,4,4],[0,0,4]])
     # set_points = np.array([local_pos,[200,0,4],[0,0,4]])
-    set_points = np.array([local_pos,[400,0,4],[200,50,4],[400,100,4],[0,2,3],[0,2,2],[100,2,3],[100,2,2],[0,4,4],[0,0,4]])
-    speed_range = [1.5,5,11.9]
+    set_points = np.array([local_pos,[-300,0,4],[-200,50,4],[-400,100,4],[0,2,3],[0,2,2],[-100,2,3],[-100,2,2],[0,4,4],[0,0,4]])
+    speed_range = [1.5,5,12.5]
     # set_points = np.array([local_pos,[25,0,4],[50,0,4],[0,0,4]])
     # set_points[:,0:2] = set_points[:,0:2]*2
     mn_speed = 0.3 #not the constrain
-    max_accel = 7
+    max_accel = 6.0
     # speed_range = [1.5,6,9]
     spd_angle_shrd = [math.pi/6,math.pi*9/10] #,math.pi*5/6
     accel_d = 0.2
-    decel_d = 0.2
+    decel_d = 0.15
     m_speed = 1 # start the flight from a lower speed
     slen=0.9
     rds = 3.5
@@ -320,6 +338,8 @@ if __name__ == '__main__':
             print("goal reached !!")
         else:
             y = controller.eular[2]
+            # if np.linalg.norm(uav_vel) > 10:
+            #     max_accel = 1.0
             velb,dyaw,yaw,pred_trj,ct_goal,time_pred,t2,m_speed,lt_ctrl,pos_wp,pos_wp2,nst_tn_pt,if_slow,opt_time,low_t = Get_control.get_vel(set_points,
                                               local_pos,ct_goal,waypoints_cv,slen,t2,time_pred,uav_vel,mn_speed,
                                               lc_max_speed,speed_range,m_speed,max_accel,pred_coe,lt_ctrl,y,turn_points,
@@ -332,10 +352,13 @@ if __name__ == '__main__':
             # vel = np.reshape(lpf3.filter(np.array([[velb[0]],[velb[1]],[velb[2]]]), t_ft1-t_ft),3)
             # print("filtered vel:",velb,vel,t_ft1-t_ft)
             # t_ft = t_ft1
-            
+            # if np.linalg.norm(uav_vel) < 10:
+                
             controller.set_vel(vel[0],vel[1],vel[2],dyaw)
+            # else:
+            #     controller.set_accel(lt_ctrl)
             # print('set_vel,ct_goal,waypoints_cv[ct_goal]',vel,ct_goal,waypoints_cv[np.clip(ct_goal,0,len(waypoints_cv)-1)],"------------------")
-        
+            print("---------------------------------------\n")
         path.append(local_pos)
         if len(path)>200:
             del path[int(np.random.rand(1)*200)]
