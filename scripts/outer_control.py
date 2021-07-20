@@ -15,6 +15,9 @@ import tf
 from get_control import Get_control
 import math
 import time
+from lpf3 import LowPassFilter3
+
+
 class UAVController(object):
     def register(self):
         self.ros_data = {}
@@ -47,7 +50,7 @@ class UAVController(object):
         bpts = MarkerArray()
         len_pts = len(pts)
         pts = np.r_[np.array(pts),np.array(t_points),np.array([t_points[min(p_index,len(t_points)-1)]])]
-        for j in range(len(pts)):
+        for j in range(len_pts,len(pts)):
             point=pts[j]
             bp = Marker()
             bp.header.frame_id = "map"
@@ -247,12 +250,13 @@ if __name__ == '__main__':
     # set_points = np.array([local_pos,[25,0,4],[50,0,4],[50,25,3],[0,25,2],[50,0,3],[50,50,2],[50,0,4],[0,0,4]])
     # set_points = np.array([local_pos,[25,2,4],[50,0,4],[50,25,3],[-100,25,2],[50,0,3],[50,50,2],[50,0,4],[0,0,4]])
     # set_points = np.array([local_pos,[100,0,4],[100,1,4],[100,1,4],[0,2,3],[0,2,2],[100,2,3],[100,2,2],[0,4,4],[0,0,4]])
-    set_points = np.array([local_pos,[200,0,4],[0,0,4]])
-    speed_range = [1.5,6,15]
+    # set_points = np.array([local_pos,[200,0,4],[0,0,4]])
+    set_points = np.array([local_pos,[400,0,4],[200,50,4],[400,100,4],[0,2,3],[0,2,2],[100,2,3],[100,2,2],[0,4,4],[0,0,4]])
+    speed_range = [1.5,5,11.9]
     # set_points = np.array([local_pos,[25,0,4],[50,0,4],[0,0,4]])
     # set_points[:,0:2] = set_points[:,0:2]*2
     mn_speed = 0.3 #not the constrain
-    max_accel = 6
+    max_accel = 7
     # speed_range = [1.5,6,9]
     spd_angle_shrd = [math.pi/6,math.pi*9/10] #,math.pi*5/6
     accel_d = 0.2
@@ -277,9 +281,16 @@ if __name__ == '__main__':
     low_t = 0
     if_slow=0
     if_reach=0
+    t_ft = 0
     set_points[0,2] = set_points[1,2] 
     waypoints_cv,turn_points,lc_max_speed = Get_control.get_curve(set_points,rds,slen,eta,speed_range,spd_angle_shrd)
-    # print("turn_points,lc_max_speed",turn_points,lc_max_speed)
+    
+    # set params
+    frq = 50 # signal frequency
+    
+    # intialize the filter
+    lpf3 = LowPassFilter3(1.0/frq, 0.8, 100, 100)
+        # print("turn_points,lc_max_speed",turn_points,lc_max_speed)
     
     while not rospy.is_shutdown():
         # break
@@ -309,13 +320,21 @@ if __name__ == '__main__':
             print("goal reached !!")
         else:
             y = controller.eular[2]
-            vel,dyaw,yaw,pred_trj,ct_goal,time_pred,t2,m_speed,lt_ctrl,pos_wp,pos_wp2,nst_tn_pt,if_slow,opt_time,low_t = Get_control.get_vel(set_points,
+            velb,dyaw,yaw,pred_trj,ct_goal,time_pred,t2,m_speed,lt_ctrl,pos_wp,pos_wp2,nst_tn_pt,if_slow,opt_time,low_t = Get_control.get_vel(set_points,
                                               local_pos,ct_goal,waypoints_cv,slen,t2,time_pred,uav_vel,mn_speed,
                                               lc_max_speed,speed_range,m_speed,max_accel,pred_coe,lt_ctrl,y,turn_points,
                                               yaw_gnum,accel_d,decel_d,decel_rad,nst_tn_pt,opt_time,low_t,if_slow)
             # vel = np.array([0.1,0.1,0.1])
+            vel = velb
+            # if t_ft== 0:
+            #     t_ft = time.time()-0.01
+            # t_ft1 = time.time()
+            # vel = np.reshape(lpf3.filter(np.array([[velb[0]],[velb[1]],[velb[2]]]), t_ft1-t_ft),3)
+            # print("filtered vel:",velb,vel,t_ft1-t_ft)
+            # t_ft = t_ft1
+            
             controller.set_vel(vel[0],vel[1],vel[2],dyaw)
-            print('set_vel,ct_goal,waypoints_cv[ct_goal]',vel,ct_goal,waypoints_cv[np.clip(ct_goal,0,len(waypoints_cv)-1)],"------------------")
+            # print('set_vel,ct_goal,waypoints_cv[ct_goal]',vel,ct_goal,waypoints_cv[np.clip(ct_goal,0,len(waypoints_cv)-1)],"------------------")
         
         path.append(local_pos)
         if len(path)>200:
